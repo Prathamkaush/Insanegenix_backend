@@ -1,0 +1,186 @@
+backend/
+├── src/
+│   ├── main.ts
+│   │   # App bootstrap
+│   │   # - CORS
+│   │   # - Global ValidationPipe
+│   │   # - Static file serving (/uploads)
+│
+│   ├── app.module.ts
+│   │   # Root module
+│   │   # Imports all feature modules
+│
+│   ├── config/
+│   │   ├── app.config.ts
+│   │   │   # PORT, frontend URL, env helpers
+│   │   │
+│   │   ├── jwt.config.ts
+│   │   │   # JWT secret, expiry
+│   │   │
+│   │   ├── razorpay.config.ts        ✅ NEW
+│   │   │   # Razorpay key_id, key_secret
+│   │   │
+│   │   └── sms.config.ts
+│   │       # OTP provider config
+│
+│   ├── common/
+│   │   ├── guards/
+│   │   │   ├── jwt-auth.guard.ts
+│   │   │   ├── roles.guard.ts
+│   │   │   └── admin.guard.ts        ✅ NEW (admin-only routes)
+│   │   │
+│   │   ├── decorators/
+│   │   │   ├── user.decorator.ts     # @User() → req.user
+│   │   │   ├── roles.decorator.ts
+│   │   │   └── public.decorator.ts
+│   │   │
+│   │   ├── interceptors/
+│   │   │   └── logging.interceptor.ts
+│   │   │
+│   │   ├── filters/
+│   │   │   └── prisma-exception.filter.ts   ✅ NEW
+│   │   │
+│   │   └── utils/
+│   │       ├── slug.util.ts
+│   │       ├── otp.util.ts
+│   │       ├── price.util.ts
+│   │       └── order.util.ts          ✅ NEW (status helpers)
+│
+│   ├── prisma/
+│   │   ├── prisma.module.ts
+│   │   └── prisma.service.ts
+│
+│   ├── auth/
+│   │   ├── auth.module.ts
+│   │   ├── auth.controller.ts
+│   │   │   # send-otp
+│   │   │   # verify-otp
+│   │   │   # me
+│   │   │
+│   │   ├── auth.service.ts
+│   │   │   # OTP login
+│   │   │   # JWT generation
+│   │   │
+│   │   ├── strategies/
+│   │   │   └── jwt.strategy.ts
+│   │   │
+│   │   └── dto/
+│   │       ├── send-otp.dto.ts
+│   │       ├── verify-otp.dto.ts
+│   │       └── auth-response.dto.ts
+│
+│   ├── users/
+│   │   ├── users.module.ts
+│   │   ├── users.service.ts
+│   │   ├── users.controller.ts
+│   │   │   # GET /users/me
+│   │   │   # PATCH /users/profile
+│   │   └── dto/
+│
+│   ├── categories/
+│   ├── product-types/
+│   ├── product-subtypes/
+│
+│   ├── products/
+│   │   ├── products.module.ts
+│   │   ├── products.service.ts
+│   │   │   # Stock updates
+│   │   │   # Low stock alerts
+│   │   │
+│   │   ├── products.controller.ts
+│   │   │   # GET /products
+│   │   │   # GET /products/:slug
+│   │   │   # GET /products/admin/low-stock   ✅
+│   │   │   # PUT /products/:id/stock          ✅
+│   │   │
+│   │   └── dto/
+│
+│   ├── cart/
+│   │   ├── cart.module.ts
+│   │   ├── cart.service.ts
+│   │   │   # Stock validation (CRITICAL)
+│   │   │
+│   │   └── cart.controller.ts
+│   │       # GET /cart
+│   │       # POST /cart/add     ❌ blocks out-of-stock
+│   │       # PUT /cart/:id
+│   │       # DELETE /cart/:id
+│
+│   ├── orders/
+│   │   ├── orders.module.ts
+│   │   ├── orders.service.ts
+│   │   │   # Order lifecycle
+│   │   │   # - PENDING → CONFIRMED
+│   │   │   # - Cancel rules enforced
+│   │   │   # - Stock decrement / restore
+│   │   │
+│   │   ├── orders.controller.ts
+│   │   │   # POST /orders (COD only)
+│   │   │   # PUT /orders/:id/cancel
+│   │   │   # PUT /orders/:id/status (admin)
+│   │   │
+│   │   └── dto/
+│
+│   ├── payments/                       ✅ NEW
+│   │   ├── payments.module.ts
+│   │   ├── payments.service.ts
+│   │   │   # Razorpay order creation
+│   │   │   # Signature verification
+│   │   │
+│   │   ├── payments.controller.ts
+│   │   │   # POST /payments/razorpay/create-order
+│   │   │   # POST /payments/razorpay/verify
+│   │   │
+│   │   └── dto/
+│   │       ├── create-payment.dto.ts
+│   │       └── verify-payment.dto.ts
+│
+│   ├── reviews/
+│   │   ├── reviews.module.ts
+│   │   ├── reviews.service.ts
+│   │   │   # Pagination
+│   │   │   # Product & admin views
+│   │   │
+│   │   ├── reviews.controller.ts
+│   │   │   # GET /reviews/product/:id
+│   │   │   # GET /reviews/admin?page&limit
+│   │   │
+│   │   └── dto/
+│
+│   ├── feedback/
+│   │   ├── feedback.module.ts
+│   │   ├── feedback.service.ts
+│   │   │   # Anonymous + user feedback
+│   │   │   # Pagination
+│   │   │
+│   │   ├── feedback.controller.ts
+│   │   │   # POST /feedback
+│   │   │   # GET /feedback?page&limit   (admin)
+│   │   │
+│   │   └── dto/
+│
+│   ├── admin/
+│   │   ├── admin.module.ts
+│   │   ├── admin.service.ts
+│   │   │   # Stats
+│   │   │   # Revenue
+│   │   │   # Orders
+│   │   │
+│   │   └── admin.controller.ts
+│   │       # /admin/stats
+│   │       # /admin/charts
+│
+├── prisma/
+│   ├── schema.prisma
+│   └── migrations/
+│
+├── uploads/
+│   └── products/
+│
+├── .env
+└── package.json
+Useful Prisma Commands:
+npx prisma migrate dev :- to run migrations
+npx prisma generate :- to generate prisma client
+npx prisma studio :- to run prisma studio
+ 

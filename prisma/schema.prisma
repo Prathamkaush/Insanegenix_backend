@@ -1,0 +1,325 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+// -----------------------------------------
+//  USER MODEL
+// -----------------------------------------
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String?
+  email        String?  @unique
+  phone        String?  @unique
+  passwordHash String?
+  googleId     String?  @unique
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  role UserRole @default(USER)
+
+  cartItems CartItem[]
+  orders    Order[]
+  reviews   Review[]
+  feedbacks Feedback[]
+  contacts  Contact[]
+  wishlists Wishlist[]
+}
+
+// -----------------------------------------
+//  OTP TABLE
+// -----------------------------------------
+model OtpCode {
+  id        Int      @id @default(autoincrement())
+  phone     String   @unique
+  otpCode   String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  tempData  Json?
+  createdAt DateTime @default(now())
+}
+
+// -----------------------------------------
+//  CATEGORY LEVELS
+// -----------------------------------------
+
+// Level 1: Main Categories (Men / Women / Kids)
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+
+  productTypes ProductType[]
+  products     Product[]
+}
+
+// Level 2: Product Types (Ethnic / Western / Party Wear)
+model ProductType {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  subtypes ProductSubtype[]
+  products Product[]
+}
+
+// Level 3: Product Sub-Types (Kurtis / Suits / Sarees …)
+model ProductSubtype {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+
+  typeId Int
+  type   ProductType @relation(fields: [typeId], references: [id])
+
+  products Product[]
+}
+
+// -----------------------------------------
+//  PRODUCT MODEL
+// -----------------------------------------
+model Product {
+  id          Int      @id @default(autoincrement())
+  title       String
+  slug        String?  @unique
+  description String?  @db.Text
+  price       Decimal  @db.Decimal(10, 2)
+  discountType  String?   // PERCENT | FLAT
+  discountValue Decimal?  @db.Decimal(10,2)
+  stock       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  img1 String?
+  img2 String?
+  img3 String?
+  img4 String?
+
+  // Relations
+  categoryId Int
+  typeId     Int
+  subtypeId  Int
+
+  category Category       @relation(fields: [categoryId], references: [id])
+  type     ProductType    @relation(fields: [typeId], references: [id])
+  subtype  ProductSubtype @relation(fields: [subtypeId], references: [id])
+
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+  reviews    Review[]
+  sizes ProductSize[]
+  wishlists Wishlist[]
+}
+
+// -----------------------------------------
+//  CART ITEMS
+// -----------------------------------------
+model CartItem {
+  id        Int      @id @default(autoincrement())
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+
+  userId    Int
+  productId Int
+  sizeId    Int?
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+  size    ProductSize? @relation(fields: [sizeId], references: [id])
+}
+
+// -----------------------------------------
+//  ORDERS & ORDER ITEMS
+// -----------------------------------------
+model Order {
+  id              Int         @id @default(autoincrement())
+  totalAmount     Decimal     @db.Decimal(10, 2)
+  status          OrderStatus @default(PENDING)
+  paymentMethod   String? // COD | RAZORPAY
+  paymentId       String?
+  razorpayOrderId String?     @unique
+  paidAt          DateTime?
+  address         Json
+  createdAt       DateTime    @default(now())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  items    OrderItem[]
+  reviews  Review[]
+  contacts Contact[]
+}
+
+model OrderItem {
+  id        Int      @id @default(autoincrement())
+  quantity  Int
+  createdAt DateTime @default(now())
+
+  // SNAPSHOT FIELDS
+  price          Decimal  @db.Decimal(10, 2) // final price per unit
+  originalPrice  Decimal? @db.Decimal(10, 2)
+  discountType   String?  // PERCENT | FLAT
+  discountValue  Decimal? @db.Decimal(10, 2)
+
+  // SIZE SNAPSHOT
+  sizeId Int?
+  size   ProductSize? @relation(fields: [sizeId], references: [id])
+
+  // RELATIONS
+  orderId   Int
+  productId Int
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+}
+
+// -----------------------------------------
+//  ENUMS
+// -----------------------------------------
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// -----------------------------------------
+//  Settings
+// -----------------------------------------
+model Settings {
+  id              Int      @id @default(autoincrement())
+  name            String?
+  email           String?
+  storeName       String?
+  supportEmail    String?
+  supportPhone    String?
+  address         String?
+  logo            String?
+  currency        String?  @default("INR")
+  maintenanceMode Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+}
+
+// -----------------------------------------
+//  Reviews
+// -----------------------------------------
+model Review {
+  id        Int      @id @default(autoincrement())
+  rating    Int
+  comment   String?
+  userId    Int
+  productId Int
+  orderId   Int
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id])
+
+  @@unique([userId, productId, orderId])
+}
+
+// -----------------------------------------
+//  Feedback
+// -----------------------------------------
+model Feedback {
+  id        Int      @id @default(autoincrement())
+  message   String   @db.Text
+  page      String?
+  createdAt DateTime @default(now())
+
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// -----------------------------------------
+//  Contact
+// -----------------------------------------
+enum ContactStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum ContactReason {
+  GENERAL
+  PAYMENT_FAILED
+  ORDER_QUERY
+}
+
+model Contact {
+  id      Int     @id @default(autoincrement())
+  name    String?
+  email   String?
+  phone   String?
+  subject String?
+  message String  @db.Text
+
+  reason ContactReason @default(GENERAL)
+  status ContactStatus @default(NEW)
+
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  orderId Int?
+  order   Order? @relation(fields: [orderId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+// -----------------------------------------
+//  Product sizes
+// -----------------------------------------
+model ProductSize {
+  id        Int      @id @default(autoincrement())
+  size      String   // S, M, L, XL
+  stock     Int
+  price     Decimal? @db.Decimal(10,2) // optional per-size pricing
+
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([productId, size])
+  cartItems CartItem[]
+  orderItems OrderItem[]
+  wishlists Wishlist[]
+}
+
+// -----------------------------------------
+//  Whishlist
+// -----------------------------------------
+model Wishlist {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  userId    Int
+  productId Int
+  sizeId    Int?
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  size    ProductSize? @relation(fields: [sizeId], references: [id])
+
+  @@unique([userId, productId, sizeId])
+}
+
