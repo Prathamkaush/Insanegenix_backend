@@ -1,0 +1,96 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+  Query,
+  ParseIntPipe,
+} from "@nestjs/common";
+import { ReviewsService } from "./reviews.service";
+import { CreateReviewDto } from "./dto/create-review.dto";
+import { JwtAuthGuard } from "../auth/strategies/jwt-auth.guard";
+import { AdminGuard } from "src/auth/admin.guard";
+
+// ✅ Swagger
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+  ApiParam,
+  ApiBody,
+  ApiUnauthorizedResponse,
+  ApiBadRequestResponse,
+} from "@nestjs/swagger";
+
+@ApiTags("Reviews")
+@Controller("reviews")
+export class ReviewsController {
+  constructor(private readonly reviewsService: ReviewsService) {}
+
+  /* ================= ADMIN: GET ALL REVIEWS ================= */
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Get all reviews (Admin)",
+    description: "Returns paginated list of all reviews for admin dashboard",
+  })
+  @ApiQuery({
+    name: "page",
+    required: false,
+    type: Number,
+    description: "Page number (default: 1)",
+  })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    type: Number,
+    description: "Items per page (default: 5)",
+  })
+  @ApiUnauthorizedResponse({ description: "Admin authentication required" })
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Get("admin")
+  getAllReviews(
+    @Query("page") page = "1",
+    @Query("limit") limit = "5"
+  ) {
+    return this.reviewsService.getAllPaginated(
+      Number(page),
+      Number(limit)
+    );
+  }
+
+  /* ================= CREATE REVIEW ================= */
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Create a review",
+    description: "Authenticated user can submit a product review",
+  })
+  @ApiBody({ type: CreateReviewDto })
+  @ApiUnauthorizedResponse({ description: "User must be logged in" })
+  @ApiBadRequestResponse({ description: "Invalid review data" })
+  @UseGuards(JwtAuthGuard)
+  @Post()
+  create(@Req() req: any, @Body() dto: CreateReviewDto) {
+    return this.reviewsService.createReview(req.user.id, dto);
+  }
+
+  /* ================= GET PRODUCT REVIEWS ================= */
+  @ApiOperation({
+    summary: "Get reviews for a product",
+    description: "Returns all approved reviews for a specific product",
+  })
+  @ApiParam({
+    name: "productId",
+    type: Number,
+    description: "Product ID",
+  })
+  @Get("product/:productId")
+  getProductReviews(
+    @Param("productId", ParseIntPipe) productId: number
+  ) {
+    return this.reviewsService.getProductReviews(productId);
+  }
+}
