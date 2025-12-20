@@ -56,8 +56,16 @@ async create(body: any, files: any) {
   };
 
   const price = Number(body.price);
+  const stock = Number(body.stock);
 
-  // ✅ PARSE SIZES
+  if (isNaN(price) || price < 0) {
+    throw new BadRequestException("Invalid price");
+  }
+
+  if (isNaN(stock) || stock < 0) {
+    throw new BadRequestException("Invalid stock");
+  }
+
   let sizes: { size: string; stock: number }[] = [];
 
   try {
@@ -70,7 +78,11 @@ async create(body: any, files: any) {
     throw new BadRequestException("At least one size is required");
   }
 
-  // ✅ UNIQUE SLUG
+  const sizeSet = new Set(sizes.map(s => s.size));
+  if (sizeSet.size !== sizes.length) {
+    throw new BadRequestException("Duplicate sizes not allowed");
+  }
+
   const baseSlug = this.generateSlug(body.title);
   const exists = await this.prisma.product.findUnique({
     where: { slug: baseSlug },
@@ -78,7 +90,6 @@ async create(body: any, files: any) {
 
   const slug = exists ? `${baseSlug}-${Date.now()}` : baseSlug;
 
-  // ✅ TRANSACTION (IMPORTANT)
   return this.prisma.$transaction(async (tx) => {
     const product = await tx.product.create({
       data: {
@@ -86,7 +97,8 @@ async create(body: any, files: any) {
         slug,
         description: body.description || "",
         price,
-        stock: Number(body.stock),
+        stock,
+        isActive: true,
         categoryId: Number(body.categoryId),
         typeId: Number(body.typeId),
         subtypeId: Number(body.subtypeId),
@@ -94,7 +106,6 @@ async create(body: any, files: any) {
       },
     });
 
-    // ✅ SAVE SIZES
     await tx.productSize.createMany({
       data: sizes.map((s) => ({
         productId: product.id,
@@ -107,199 +118,209 @@ async create(body: any, files: any) {
   });
 }
 
-
   // ----------------------------------
   // FIND ALL (FILTER + PAGINATION)
   // ----------------------------------
-  async findAll(query: any) {
-    const {
-      page,
-      limit,
-      categoryId,
-      typeId,
-      subtypeId,
-      minPrice,
-      maxPrice,
-      sort,
-      stock,
-      search,
-    } = query;
+async findAll(query: any) {
+  const {
+    page,
+    limit,
+    categoryId,
+    typeId,
+    subtypeId,
+    minPrice,
+    maxPrice,
+    sort,
+    stock,
+    search,
+  } = query;
 
-    const where: any = { AND: [] };
+  const where: any = {
+    AND: [{ isActive: true }],
+  };
 
-    if (categoryId) where.AND.push({ categoryId: Number(categoryId) });
-    if (typeId) where.AND.push({ typeId: Number(typeId) });
-    if (subtypeId) where.AND.push({ subtypeId: Number(subtypeId) });
+  if (categoryId) where.AND.push({ categoryId: Number(categoryId) });
+  if (typeId) where.AND.push({ typeId: Number(typeId) });
+  if (subtypeId) where.AND.push({ subtypeId: Number(subtypeId) });
 
-    if (minPrice || maxPrice) {
-      where.AND.push({
-        price: {
-          ...(minPrice ? { gte: Number(minPrice) } : {}),
-          ...(maxPrice ? { lte: Number(maxPrice) } : {}),
-        },
-      });
-    }
+  if (minPrice || maxPrice) {
+    where.AND.push({
+      price: {
+        ...(minPrice ? { gte: Number(minPrice) } : {}),
+        ...(maxPrice ? { lte: Number(maxPrice) } : {}),
+      },
+    });
+  }
 
-    if (stock === "in") where.AND.push({ stock: { gt: 0 } });
-    if (stock === "out") where.AND.push({ stock: 0 });
+  if (stock === "in") where.AND.push({ stock: { gt: 0 } });
+  if (stock === "out") where.AND.push({ stock: 0 });
 
-    if (search) {
-      where.AND.push({
-        OR: [
-          { title: { contains: search } },
-          {
-            description: {
-              contains: search,
-            },
-          },
-        ],
-      });
-    }
+  if (search) {
+    where.AND.push({
+      OR: [
+        { title: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+      ],
+    });
+  }
 
-    let orderBy: any = { createdAt: "desc" };
-    if (sort === "low_to_high") orderBy = { price: "asc" };
-    if (sort === "high_to_low") orderBy = { price: "desc" };
-    if (sort === "oldest") orderBy = { createdAt: "asc" };
+  let orderBy: any = { createdAt: "desc" };
+  if (sort === "low_to_high") orderBy = { price: "asc" };
+  if (sort === "high_to_low") orderBy = { price: "desc" };
+  if (sort === "oldest") orderBy = { createdAt: "asc" };
 
-    const take = limit ? Number(limit) : undefined;
-    const skip =
-      page && take ? (Number(page) - 1) * take : undefined;
+  const take = limit ? Number(limit) : undefined;
+  const skip = page && take ? (Number(page) - 1) * take : undefined;
 
-    const products = await this.prisma.product.findMany({
-      where,
-      orderBy,
-      take,
-      skip,
-      select: {
-  id: true,
-  title: true,
-  slug: true,
-  price: true,
-  discountType: true,
-  discountValue: true,
-  stock: true,
-  img1: true,
-  img2: true,
-  img3: true,
-  img4: true,
-
-  sizes: {
+  const products = await this.prisma.product.findMany({
+    where,
+    orderBy,
+    take,
+    skip,
     select: {
       id: true,
-      size: true,
-      stock: true,
+      title: true,
+      slug: true,
       price: true,
+      discountType: true,
+      discountValue: true,
+      stock: true,
+      img1: true,
+      img2: true,
+      img3: true,
+      img4: true,
+      sizes: {
+        select: {
+          id: true,
+          size: true,
+          stock: true,
+          price: true,
+        },
+      },
+      category: true,
+      type: true,
+      subtype: true,
+      createdAt: true,
     },
-  },
+  });
 
-  category: true,
-  type: true,
-  subtype: true,
-  createdAt: true,
-},
-    });
+  const total = await this.prisma.product.count({ where });
 
-    const total = await this.prisma.product.count({ where });
+  const mapped = products.map((p) => ({
+    ...p,
+    finalPrice: this.getFinalPrice(p),
+  }));
 
-    const mapped = products.map((p) => ({
-      ...p,
-      finalPrice: this.getFinalPrice(p),
-    }));
-
-    return {
-      products: mapped,
-      total,
-      page: page ? Number(page) : 1,
-      pages: take ? Math.ceil(total / take) : 1,
-    };
-  }
+  return {
+    products: mapped,
+    total,
+    page: page ? Number(page) : 1,
+    pages: take ? Math.ceil(total / take) : 1,
+  };
+}
 
   // ----------------------------------
   // FIND ONE BY ID
   // ----------------------------------
-  async findOne(id: number) {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        title: true,
-        slug: true,
-        description: true,
-        price: true,
-        discountType: true,
-        discountValue: true,
-        stock: true,
-        img1: true,
-        img2: true,
-        img3: true,
-        img4: true,
-        sizes: {
-          select: {
-            id: true,
-            size: true,
-            stock: true,
-            price: true,
-          },
+async findOne(id: number) {
+  const product = await this.prisma.product.findFirst({
+    where: {
+      id,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      description: true,
+      price: true,
+      discountType: true,
+      discountValue: true,
+      stock: true,
+      img1: true,
+      img2: true,
+      img3: true,
+      img4: true,
+      sizes: {
+        select: {
+          id: true,
+          size: true,
+          stock: true,
+          price: true,
         },
-        category: true,
-        type: true,
-        subtype: true,
-        createdAt: true,
-        updatedAt: true,
       },
-    });
+      category: true,
+      type: true,
+      subtype: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 
-    if (!product) throw new NotFoundException("Product not found");
-
-    return {
-      ...product,
-      finalPrice: this.getFinalPrice(product),
-    };
+  if (!product) {
+    throw new NotFoundException("Product not found");
   }
+
+  return {
+    ...product,
+    finalPrice: this.getFinalPrice(product),
+  };
+}
 
   // ----------------------------------
   // FIND BY SLUG
   // ----------------------------------
-  async findBySlug(slug: string) {
-    const product = await this.prisma.product.findUnique({
-      where: { slug },
-      select: {
-        id: true,
-        title: true,
-        slug: true,
-        description: true,
-        price: true,
-        discountType: true,
-        discountValue: true,
-        stock: true,
-        img1: true,
-        img2: true,
-        img3: true,
-        img4: true,
-        sizes: {
-          select: {
-            id: true,
-            size: true,
-            stock: true,
-            price: true,
-          },
-        },
-        category: true,
-        type: true,
-        subtype: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+async findBySlug(slug: string) {
+  // Extract ID from slug-id
+  const id = Number(slug.split("-").pop());
 
-    if (!product) throw new NotFoundException("Product not found");
-
-    return {
-      ...product,
-      finalPrice: this.getFinalPrice(product),
-    };
+  if (!id || isNaN(id)) {
+    throw new NotFoundException("Invalid product");
   }
 
+  const product = await this.prisma.product.findFirst({
+    where: {
+      id,
+      isActive: true, // ✅ CRITICAL
+    },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      description: true,
+      price: true,
+      discountType: true,
+      discountValue: true,
+      stock: true,
+      img1: true,
+      img2: true,
+      img3: true,
+      img4: true,
+      sizes: {
+        select: {
+          id: true,
+          size: true,
+          stock: true,
+          price: true,
+        },
+      },
+      category: true,
+      type: true,
+      subtype: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!product) {
+    throw new NotFoundException("Product not found");
+  }
+
+  return {
+    ...product,
+    finalPrice: this.getFinalPrice(product),
+  };
+}
   // ----------------------------------
   // UPDATE PRODUCT
   // ----------------------------------
@@ -349,7 +370,7 @@ async create(body: any, files: any) {
     Object.assign(data, images);
 
     return this.prisma.product.update({
-      where: { id },
+      where: { id , isActive: true },
       data,
     });
   }
@@ -358,55 +379,62 @@ async create(body: any, files: any) {
   // DELETE PRODUCT
   // ----------------------------------
   async remove(id: number) {
-    await this.findOne(id);
+  await this.findOne(id);
 
-    await this.prisma.cartItem.deleteMany({
-      where: { productId: id },
-    });
-
-    await this.prisma.orderItem.deleteMany({
-      where: { productId: id },
-    });
-
-    await this.prisma.review.deleteMany({
-      where: { productId: id },
-    });
-
-    return this.prisma.product.delete({
-      where: { id },
-    });
-  }
-
+  return this.prisma.product.update({
+    where: { id },
+    data: {
+      isActive: false,
+    },
+  });
+}
   // ----------------------------------
   // UPDATE STOCK
   // ----------------------------------
-  async updateStock(productId: number, stock: number) {
-    if (stock < 0) {
-      throw new BadRequestException(
-        "Stock cannot be negative"
-      );
-    }
-
-    return this.prisma.product.update({
-      where: { id: productId },
-      data: { stock },
-    });
+async updateStock(productId: number, stock: number) {
+  if (stock < 0) {
+    throw new BadRequestException("Stock cannot be negative");
   }
+
+  const product = await this.prisma.product.findFirst({
+    where: {
+      id: productId,
+      isActive: true,
+    },
+  });
+
+  if (!product) {
+    throw new NotFoundException("Product not found");
+  }
+
+  return this.prisma.product.update({
+    where: { id: productId },
+    data: { stock },
+  });
+}
 
 // ----------------------------------
 // UPDATE DISCOUNT
 // ----------------------------------
 
-  async updateDiscount(
+async updateDiscount(
   id: number,
   body: { discountType?: string; discountValue?: number }
 ) {
-  const product = await this.prisma.product.findUnique({ where: { id } });
+  const product = await this.prisma.product.findFirst({
+    where: {
+      id,
+      isActive: true, // ✅ CRITICAL
+    },
+  });
 
-  if (!product) throw new NotFoundException("Product not found");
+  if (!product) {
+    throw new NotFoundException("Product not found");
+  }
 
   const { discountType, discountValue } = body;
 
+  // Remove discount
   if (!discountType || discountValue == null) {
     return this.prisma.product.update({
       where: { id },
@@ -417,12 +445,24 @@ async create(body: any, files: any) {
     });
   }
 
-  if (discountType === "PERCENT" && discountValue > 100) {
-    throw new BadRequestException("Discount percent cannot exceed 100");
+  if (discountType === "PERCENT") {
+    if (discountValue <= 0 || discountValue > 100) {
+      throw new BadRequestException(
+        "Discount percent must be between 1 and 100"
+      );
+    }
   }
 
-  if (discountType === "FLAT" && discountValue >= Number(product.price)) {
-    throw new BadRequestException("Flat discount must be less than price");
+  if (discountType === "FLAT") {
+    if (discountValue <= 0) {
+      throw new BadRequestException("Flat discount must be greater than 0");
+    }
+
+    if (discountValue >= Number(product.price)) {
+      throw new BadRequestException(
+        "Flat discount must be less than price"
+      );
+    }
   }
 
   return this.prisma.product.update({
@@ -434,23 +474,24 @@ async create(body: any, files: any) {
   });
 }
 
-
   // ----------------------------------
   // LOW STOCK
   // ----------------------------------
   async getLowStock(threshold = 5) {
-    return this.prisma.product.findMany({
-      where: {
-        stock: { lte: threshold },
-      },
-      select: {
-        id: true,
-        title: true,
-        stock: true,
-      },
-      orderBy: {
-        stock: "asc",
-      },
-    });
-  }
+  return this.prisma.product.findMany({
+    where: {
+      isActive: true, // ✅ CRITICAL
+      stock: { lte: threshold },
+    },
+    select: {
+      id: true,
+      title: true,
+      stock: true,
+    },
+    orderBy: {
+      stock: "asc",
+    },
+  });
 }
+}
+
