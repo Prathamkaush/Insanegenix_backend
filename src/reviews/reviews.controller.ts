@@ -12,7 +12,7 @@ import {
 import { ReviewsService } from "./reviews.service";
 import { CreateReviewDto } from "./dto/create-review.dto";
 import { JwtAuthGuard } from "../auth/strategies/jwt-auth.guard";
-import { AdminGuard } from "src/auth/admin.guard";
+import { AdminGuard } from "../auth/admin.guard";
 
 // ✅ Swagger
 import {

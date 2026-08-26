@@ -5,27 +5,62 @@ import { PrismaService } from "../prisma/prisma.service";
 export class CartService {
   constructor(private prisma: PrismaService) {}
 
-  // GET /cart
-  async getCart(userId: number) {
-    const items = await this.prisma.cartItem.findMany({
-      where: { userId },
-      include: { product: true,
-        size: true,
-       },
-    });
+private calculateFinalPrice(product: any): number {
+  const price = Number(product.price);
 
-    return { items };
+  if (product.discountType === "PERCENT" && product.discountValue) {
+    return Math.max(
+      0,
+      Math.round(price - (price * Number(product.discountValue)) / 100)
+    );
   }
+
+  if (product.discountType === "FLAT" && product.discountValue) {
+    return Math.max(
+      0,
+      Math.round(price - Number(product.discountValue))
+    );
+  }
+
+  return price;
+}
+
+
+  // GET /cart
+async getCart(userId: number) {
+  const items = await this.prisma.cartItem.findMany({
+    where: { userId },
+    select: {
+      id: true,
+      quantity: true,
+      price: true,
+      weight: true,
+      product: {
+        select: {
+          id: true,
+          title: true,
+          img1: true,
+        },
+      },
+      size: {
+        select: {
+          id: true,
+          size: true,
+        },
+      },
+    },
+  });
+
+  return { items };
+}
+
 
   // POST /cart/add
 async addToCart(
   userId: number,
   productId: number,
   sizeId?: number
-) 
-
-{
-
+) {
   const product = await this.prisma.product.findUnique({
     where: { id: productId },
     include: { sizes: true },
@@ -33,17 +68,20 @@ async addToCart(
 
   if (!product) {
     throw new BadRequestException("Product not found");
-
   }
 
-  // ✅ If product has sizes → sizeId is mandatory
   if (product.sizes.length > 0 && !sizeId) {
     throw new BadRequestException("Please select a size");
   }
 
+  const weight = Number(product.weight);
+
+if (!weight || weight <= 0) {
+  throw new BadRequestException("Invalid product weight");
+}
+
   let availableStock: number;
 
-  // ✅ SIZE-BASED STOCK (PRIMARY PATH)
   if (sizeId) {
     const size = await this.prisma.productSize.findUnique({
       where: { id: sizeId },
@@ -54,9 +92,7 @@ async addToCart(
     }
 
     availableStock = size.stock;
-  }
-  // ✅ SIMPLE PRODUCT (NO SIZES)
-  else {
+  } else {
     availableStock = product.stock;
   }
 
@@ -64,7 +100,8 @@ async addToCart(
     throw new BadRequestException("Out of stock");
   }
 
-  // ✅ UNIQUE CART ITEM = user + product + size
+  const finalPrice = this.calculateFinalPrice(product);
+
   const existing = await this.prisma.cartItem.findFirst({
     where: {
       userId,
@@ -80,7 +117,9 @@ async addToCart(
 
     return this.prisma.cartItem.update({
       where: { id: existing.id },
-      data: { quantity: existing.quantity + 1 },
+      data: {
+    quantity: existing.quantity + 1,
+  },
     });
   }
 
@@ -90,10 +129,11 @@ async addToCart(
       productId,
       sizeId: sizeId ?? null,
       quantity: 1,
+      price: finalPrice,
+      weight,
     },
   });
 }
-
   // PUT /cart/:id  (update quantity)
   async updateQuantity(id: number, quantity: number, userId: number) {
   if (quantity < 1) {

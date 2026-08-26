@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { calculateFinalPrice } from "../utils/pricing";
 
 @Injectable()
 export class WishlistService {
@@ -52,18 +53,49 @@ export class WishlistService {
   }
 
   async getUserWishlist(userId: number) {
-    return this.prisma.wishlist.findMany({
-      where: { userId },
-      include: {
-        product: {
-          include: {
-            category: true,
-            type: true,
-            subtype: true,
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-  }
+const items = await this.prisma.wishlist.findMany({
+where: { userId },
+orderBy: { createdAt: "desc" },
+include: {
+product: {
+select: {
+id: true,
+title: true,
+slug: true,
+img1: true,
+price: true,
+discountType: true,
+discountValue: true,
+stock: true,
+},
+},
+size: {
+select: {
+id: true,
+size: true,
+stock: true,
+},
+},
+},
+});
+
+return items.map((item) => {
+const finalPrice = calculateFinalPrice(
+item.product.price,
+item.product.discountType,
+item.product.discountValue
+);
+
+return {
+...item,
+product: {
+...item.product,
+finalPrice, // 🔥 COMPUTED, NOT STORED
+},
+};
+});
 }
+
+}
+
+

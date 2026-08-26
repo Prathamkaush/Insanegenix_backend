@@ -1,0 +1,1 @@
+ALTER TABLE Product ADD COLUMN estimatedShipping INTEGER NOT NULL DEFAULT 0;
